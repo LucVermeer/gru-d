@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_lightning.core.lightning import LightningModule
-from pytorch_lightning import Trainer
+from pytorch_lightning import Trainer, LightningModule
 
 
 class GRUDCell(nn.Module):
@@ -81,21 +80,3 @@ class GRUDCell(nn.Module):
         h_next = (1 - z) * h_prev + z * h_tilde
 
         return h_next
-
-
-class MaskedMSELoss(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.mse = nn.MSELoss(reduction="none")
-
-    def forward(self, pred, target, mask):
-        loss = self.mse(pred, target)
-        masked_loss = loss * mask
-        return masked_loss.sum() / mask.sum()
-
-
-class GRUD(LightningModule):
-    def __init__(self, input_size, hidden_size, output_size):
-        super(GRUD, self).__init__()
-        self.hidden_size = hidden_size
-        self.gr
