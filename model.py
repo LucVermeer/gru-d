@@ -50,6 +50,17 @@ class GRUDCell(nn.Module):
         mask: binary mask that indicates the presence of missing values
         delta: time intervals between two consecutive visits
         """
+        print(
+            "Shapes are x: {}, h_prev: {}, x_mean: {}, mask: {}, delta: {}, self.weight_gamma_x: {}, self.weight_gamma_h: {}".format(
+                x.shape,
+                h_prev.shape,
+                x_mean.shape,
+                mask.shape,
+                delta.shape,
+                self.weight_gamma_x.shape,
+                self.weight_gamma_h.shape,
+            )
+        )
         gamma_x = torch.exp(
             -torch.max(torch.zeros_like(delta), self.weight_gamma_x * delta)
         )

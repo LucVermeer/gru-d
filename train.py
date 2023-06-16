@@ -4,9 +4,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer, LightningModule
 
-import sys
-import os
-
 from .model import GRUDCell
 from .data import TimeSeriesDataset
 
@@ -28,7 +25,9 @@ class GRUD(LightningModule):
         self.hidden_size = hidden_size
         self.grud_cell = GRUDCell(input_size, hidden_size)
         self.fc = nn.Linear(hidden_size, output_size)
-        self.loss_fn = MaskedMSELoss()
+        self.loss_fn = (
+            nn.CrossEntropyLoss()
+        )  # Change to Cross Entropy for classification
 
     def forward(self, x, x_mean, mask, delta):
         batch_size, seq_len, _ = x.size()
@@ -38,12 +37,14 @@ class GRUD(LightningModule):
                 x[:, t, :], h, x_mean[:, t, :], mask[:, t, :], delta[:, t, :]
             )
         out = self.fc(h)
-        return F.softmax(out, dim=1)
+        return out  # No need for softmax with nn.CrossEntropyLoss()
 
     def training_step(self, batch, batch_idx):
         x, x_mean, mask, delta, y = batch
         pred = self.forward(x, x_mean, mask, delta)
-        loss = self.loss_fn(pred, y, mask)
+        loss = self.loss_fn(
+            pred, y
+        )  # Assumes y is of shape (batch_size,) with class labels
         self.log("train_loss", loss)
         return loss
 
@@ -58,13 +59,12 @@ if __name__ == "__main__":
     print("Dataset instantiated.")
 
     # Create a DataLoader
-    batch_size = 32  # choose the batch size that suits your needs
-    # Shuffle??
+    batch_size = 32
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     # Instantiate the model
     print("Instantiating the model...")
-    model = GRUD(input_size=dataset.x.shape[1], hidden_size=50, output_size=6)
+    model = GRUD(input_size=dataset.x.shape[2], hidden_size=50, output_size=6)
     print("Model instantiated.")
 
     # Instantiate the trainer
