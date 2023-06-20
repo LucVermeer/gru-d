@@ -25,9 +25,7 @@ class GRUD(LightningModule):
         self.hidden_size = hidden_size
         self.grud_cell = GRUDCell(input_size, hidden_size)
         self.fc = nn.Linear(hidden_size, output_size)
-        self.loss_fn = (
-            nn.CrossEntropyLoss()
-        )  # Change to Cross Entropy for classification
+        self.loss_fn = nn.CrossEntropyLoss()
 
     def forward(self, x, x_mean, mask, delta):
         batch_size, seq_len, _ = x.size()
@@ -37,14 +35,15 @@ class GRUD(LightningModule):
                 x[:, t, :], h, x_mean[:, t, :], mask[:, t, :], delta[:, t, :]
             )
         out = self.fc(h)
-        return out  # No need for softmax with nn.CrossEntropyLoss()
+        # print(out.shape)
+        return out
 
     def training_step(self, batch, batch_idx):
         x, x_mean, mask, delta, y = batch
         pred = self.forward(x, x_mean, mask, delta)
-        loss = self.loss_fn(
-            pred, y
-        )  # Assumes y is of shape (batch_size,) with class labels
+        y = torch.argmax(y, dim=1)
+        # pred = torch.argmax(pred, dim=1)
+        loss = self.loss_fn(pred, y)
         self.log("train_loss", loss)
         return loss
 
@@ -60,11 +59,13 @@ if __name__ == "__main__":
 
     # Create a DataLoader
     batch_size = 32
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=True, num_workers=0
+    )
 
     # Instantiate the model
     print("Instantiating the model...")
-    model = GRUD(input_size=dataset.x.shape[2], hidden_size=50, output_size=6)
+    model = GRUD(input_size=dataset.x.shape[2], hidden_size=25, output_size=6)
     print("Model instantiated.")
 
     # Instantiate the trainer
@@ -76,3 +77,8 @@ if __name__ == "__main__":
     print("Training the model...")
     trainer.fit(model, dataloader)
     print("Training finished.")
+
+    # Save the mode
+    print("Saving the model...")
+    torch.save(model.state_dict(), "grud/model.pt")
+    print("Model saved.")

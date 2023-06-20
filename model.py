@@ -22,12 +22,8 @@ class GRUDCell(nn.Module):
         )
 
         # Define the parameters for the decay rates
-        self.weight_gamma_x = nn.Parameter(
-            torch.Tensor(input_size, input_size)
-        )
-        self.weight_gamma_h = nn.Parameter(
-            torch.Tensor(hidden_size, input_size + hidden_size)
-        )
+        self.weight_gamma_x = nn.Parameter(torch.Tensor(input_size))
+        self.weight_gamma_h = nn.Parameter(torch.Tensor(hidden_size))
 
         self.bias = nn.Parameter(torch.Tensor(hidden_size))
 
@@ -38,8 +34,10 @@ class GRUDCell(nn.Module):
         nn.init.xavier_uniform_(self.weight_z)
         nn.init.xavier_uniform_(self.weight_r)
         nn.init.xavier_uniform_(self.weight_h_tilde)
-        nn.init.xavier_uniform_(self.weight_gamma_x)
-        nn.init.xavier_uniform_(self.weight_gamma_h)
+
+        # Initialize the decay rates with uniform because they have less than 2 dimensions
+        nn.init.uniform_(self.weight_gamma_x, a=0.0, b=1.0)
+        nn.init.uniform_(self.weight_gamma_h, a=0.0, b=1.0)
         nn.init.zeros_(self.bias)
 
     def forward(self, x, h_prev, x_mean, mask, delta):
@@ -50,22 +48,30 @@ class GRUDCell(nn.Module):
         mask: binary mask that indicates the presence of missing values
         delta: time intervals between two consecutive visits
         """
-        print(
-            "Shapes are x: {}, h_prev: {}, x_mean: {}, mask: {}, delta: {}, self.weight_gamma_x: {}, self.weight_gamma_h: {}".format(
-                x.shape,
-                h_prev.shape,
-                x_mean.shape,
-                mask.shape,
-                delta.shape,
-                self.weight_gamma_x.shape,
-                self.weight_gamma_h.shape,
+        # print(
+        #     "Shapes are x: {}, h_prev: {}, x_mean: {}, mask: {}, delta: {}, self.weight_gamma_x: {}, self.weight_gamma_h: {}".format(
+        #         x.shape,
+        #         h_prev.shape,
+        #         x_mean.shape,
+        #         mask.shape,
+        #         delta.shape,
+        #         self.weight_gamma_x.shape,
+        #         self.weight_gamma_h.shape,
+        #     )
+        # )
+
+        gamma_x = torch.exp(
+            -torch.max(
+                torch.zeros_like(delta),
+                self.weight_gamma_x * delta
+                # + self.bias_gamma_x,
             )
         )
-        gamma_x = torch.exp(
-            -torch.max(torch.zeros_like(delta), self.weight_gamma_x * delta)
-        )
         gamma_h = torch.exp(
-            -torch.max(torch.zeros_like(delta), self.weight_gamma_h * delta)
+            -torch.max(
+                torch.zeros_like(delta),
+                self.weight_gamma_h * delta,
+            )
         )
 
         x_hat = gamma_x * x + (1 - gamma_x) * mask * x_mean
