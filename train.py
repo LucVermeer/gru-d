@@ -9,6 +9,8 @@ from torchmetrics import Accuracy
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
 
+import pandas as pd
+
 from .model import GRUDCell
 from .data import TimeSeriesDataset
 
@@ -114,7 +116,7 @@ early_stop_callback = EarlyStopping(
 def train(args):
     # Instantiate the dataset
     #   Load the csv fil
-    df = pd.read_csv(csv_file)
+    df = pd.read_csv(args.data_path)
 
     # Split the dataframe into train, validation, and test
     train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
@@ -123,19 +125,27 @@ def train(args):
     )  # 0.25 x 0.8 = 0.2
 
     # Create the datasets
-    train_dataset = TimeSeriesDataset(train_df)
-    val_dataset = TimeSeriesDataset(val_df)
-    test_dataset = TimeSeriesDataset(test_df)
+    train_dataset = TimeSeriesDataset(train_df, seq_len=args.seq_len)
+    val_dataset = TimeSeriesDataset(val_df, seq_len=args.seq_len)
+    test_dataset = TimeSeriesDataset(
+        test_df, seq_len=args.seq_len, step=args.step_size
+    )
 
     # Create the DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=args.batch_size, shuffle=True
+    )
+    val_dataloader = DataLoader(
+        val_dataset, batch_size=args.batch_size, shuffle=False
+    )
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=args.batch_size, shuffle=False
+    )
     # Instantiate the model
     print("Instantiating the model...")
     model = GRUD(
-        input_size=dataset.x.shape[2],
-        hidden_size=dataset.x.shape[2],
+        input_size=train_dataset.x.shape[2],
+        hidden_size=train_dataset.x.shape[2],
         output_size=6,
     )
     print("Model instantiated.")
@@ -174,6 +184,27 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--train", action="store_true", help="Train the model", default=True
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=16, help="Batch size for training"
+    )
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default="grud/data.csv",
+        help="Path to the preprocessed data",
+    )
+    parser.add_argument(
+        "--seq_len",
+        type=int,
+        default=100,
+        help="Sequence length for training",
+    )
+    parser.add_argument(
+        "--step_size",
+        type=int,
+        default=10,
+        help="Step size for training",
     )
     args = parser.parse_args()
 
