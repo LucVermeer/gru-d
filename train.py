@@ -4,10 +4,10 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer, LightningModule
 from torch.utils.data import random_split
-from sklearn.metrics import f1_score
-from torchmetrics import Accuracy
 from pytorch_lightning.callbacks import EarlyStopping
-
+from torchmetrics import Accuracy
+from sklearn.metrics import f1_score
+from sklearn.model_selection import train_test_split
 
 from .model import GRUDCell
 from .data import TimeSeriesDataset
@@ -111,35 +111,26 @@ early_stop_callback = EarlyStopping(
 )
 
 
-def train():
+def train(args):
     # Instantiate the dataset
-    print("Instantiating the dataset...")
-    dataset = TimeSeriesDataset(
-        "grud/data.csv",
-        seq_len=100,
-        step=10,
-    )
-    print("Dataset instantiated.")
+    #   Load the csv fil
+    df = pd.read_csv(csv_file)
 
-    # Split the dataset into training and test sets
-    train_size = int(0.6 * len(dataset))
-    val_size = int(0.2 * len(dataset))
-    test_size = len(dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = random_split(
-        dataset, [train_size, val_size, test_size]
-    )
+    # Split the dataframe into train, validation, and test
+    train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
+    train_df, val_df = train_test_split(
+        train_df, test_size=0.25, random_state=42
+    )  # 0.25 x 0.8 = 0.2
 
-    # Create DataLoaders for training and test sets
-    batch_size = 32
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=0
-    )
-    val_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=0
-    )
-    test_dataloader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=0
-    )
+    # Create the datasets
+    train_dataset = TimeSeriesDataset(train_df)
+    val_dataset = TimeSeriesDataset(val_df)
+    test_dataset = TimeSeriesDataset(test_df)
+
+    # Create the DataLoaders
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
     # Instantiate the model
     print("Instantiating the model...")
     model = GRUD(
@@ -190,4 +181,4 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
 
     if args.train:
-        train()
+        train(args)

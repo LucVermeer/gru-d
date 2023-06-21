@@ -6,14 +6,13 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 import pickle
 
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
+from sklearn.model_selection import train_test_split
 
 
 class TimeSeriesDataset(Dataset):
     def __init__(
         self,
-        csv_file,
+        df,
         label_col="Label",
         time_col="Time (s).1",
         exclude_cols=[
@@ -34,9 +33,6 @@ class TimeSeriesDataset(Dataset):
         self.seq_len = seq_len
         self.step = step
 
-        # Load the csv file
-        df = pd.read_csv(csv_file)
-
         # Separate the features and labels
         x = df.drop(columns=[label_col] + exclude_cols).values
         y = df[label_col].values
@@ -56,7 +52,6 @@ class TimeSeriesDataset(Dataset):
 
         # Generate 'delta' (time elapsed since the last measurement)
         time = df[time_col].values
-        print(time.shape)
         delta = np.zeros_like(x)
         delta[1:] = np.subtract(time[1:], time[:-1])[:, None]
 
@@ -64,10 +59,6 @@ class TimeSeriesDataset(Dataset):
         scaler = StandardScaler()
         x = scaler.fit_transform(x)
         x_mean = scaler.transform([x_mean])[0]
-
-        # Save the scaler for future use
-        with open("scaler.pkl", "wb") as f:
-            pickle.dump(scaler, f)
 
         # Reshape data into overlapping sequences
         num_sequences = (len(df) - seq_len) // step
@@ -94,13 +85,6 @@ class TimeSeriesDataset(Dataset):
         self.mask = torch.tensor(self.mask, dtype=torch.float32)
         self.delta = torch.tensor(self.delta, dtype=torch.float32)
         self.y = torch.tensor(self.y, dtype=torch.long)
-
-        # Move to device
-        self.x = self.x.to(device)
-        self.x_mean = self.x_mean.to(device)
-        self.mask = self.mask.to(device)
-        self.delta = self.delta.to(device)
-        self.y = self.y.to(device)
 
     def __len__(self):
         return len(self.y)
