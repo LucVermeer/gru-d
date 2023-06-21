@@ -3,6 +3,8 @@ from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 import torch
 import numpy as np
+from sklearn.preprocessing import StandardScaler
+import pickle
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -14,7 +16,18 @@ class TimeSeriesDataset(Dataset):
         csv_file,
         label_col="Label",
         time_col="Time (s).1",
-        exclude_cols=["Time (s)", "Time (s).1"],
+        exclude_cols=[
+            "Time (s)",
+            "Time (s).1",
+            "Velocity (m/s)",
+            "Direction (°)",
+            "Distance (cm)",
+            "Horizontal Accuracy (m)",
+            "Time_Until_Next_Label",
+            "Time_Since_Previous_Label",
+            "Latitude (°)",
+            "Longitude (°)",
+        ],
         seq_len=100,
         step=10,
     ):
@@ -47,6 +60,15 @@ class TimeSeriesDataset(Dataset):
         delta = np.zeros_like(x)
         delta[1:] = np.subtract(time[1:], time[:-1])[:, None]
 
+        # Normalize 'x' and 'x_mean' for each feature using the mean and std of the training data
+        scaler = StandardScaler()
+        x = scaler.fit_transform(x)
+        x_mean = scaler.transform([x_mean])[0]
+
+        # Save the scaler for future use
+        with open("scaler.pkl", "wb") as f:
+            pickle.dump(scaler, f)
+
         # Reshape data into overlapping sequences
         num_sequences = (len(df) - seq_len) // step
         self.x = np.zeros((num_sequences, seq_len, x.shape[1]))
@@ -61,9 +83,10 @@ class TimeSeriesDataset(Dataset):
             self.x_mean[i] = np.repeat(x_mean[np.newaxis, :], seq_len, axis=0)
             self.mask[i] = mask[start_idx : start_idx + seq_len]
             self.delta[i] = delta[start_idx : start_idx + seq_len]
-            self.y[i] = y[
-                start_idx + seq_len - 1
-            ]  # label is from the end of the sequence
+            # make the label the most common label in the sequence
+            self.y[i] = np.bincount(
+                y[start_idx : start_idx + seq_len]
+            ).argmax()
 
         # Convert to tensors
         self.x = torch.tensor(self.x, dtype=torch.float32)
