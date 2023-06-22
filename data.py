@@ -4,7 +4,6 @@ import pandas as pd
 import torch
 import numpy as np
 from sklearn.preprocessing import StandardScaler
-import pickle
 
 from sklearn.model_selection import train_test_split
 
@@ -29,6 +28,8 @@ class TimeSeriesDataset(Dataset):
         ],
         seq_len=100,
         step=10,
+        label_encoder=None,
+        scaler=None,
     ):
         self.seq_len = seq_len
         self.step = step
@@ -38,8 +39,12 @@ class TimeSeriesDataset(Dataset):
         y = df[label_col].values
 
         # Encode the labels
-        label_encoder = LabelEncoder()
+        if not label_encoder:
+            label_encoder = LabelEncoder()
+
         y = label_encoder.fit_transform(y)
+
+        self.label_encoder = label_encoder
 
         # Generate 'x_mean'
         x_mean = np.nanmean(x, axis=0)
@@ -56,9 +61,14 @@ class TimeSeriesDataset(Dataset):
         delta[1:] = np.subtract(time[1:], time[:-1])[:, None]
 
         # Normalize 'x' and 'x_mean' for each feature using the mean and std of the training data
-        scaler = StandardScaler()
-        x = scaler.fit_transform(x)
+        if scaler is None:
+            scaler = StandardScaler()
+            x = scaler.fit_transform(x)
+        else:
+            x = scaler.transform(x)
+
         x_mean = scaler.transform([x_mean])[0]
+        self.scaler = scaler
 
         # Reshape data into overlapping sequences
         num_sequences = (len(df) - seq_len) // step
@@ -66,7 +76,9 @@ class TimeSeriesDataset(Dataset):
         self.x_mean = np.zeros((num_sequences, seq_len, x_mean.shape[0]))
         self.mask = np.zeros((num_sequences, seq_len, mask.shape[1]))
         self.delta = np.zeros((num_sequences, seq_len, delta.shape[1]))
-        self.y = np.zeros((num_sequences, y.shape[0]))
+        self.y = np.zeros(
+            num_sequences
+        )  # initialize with zeros of size num_sequences, not y.shape[0]
 
         for i in range(num_sequences):
             start_idx = i * step
@@ -75,9 +87,12 @@ class TimeSeriesDataset(Dataset):
             self.mask[i] = mask[start_idx : start_idx + seq_len]
             self.delta[i] = delta[start_idx : start_idx + seq_len]
             # make the label the most common label in the sequence
-            self.y[i] = np.bincount(
-                y[start_idx : start_idx + seq_len]
-            ).argmax()
+            sequence_labels = y[start_idx : start_idx + seq_len]
+            # print(f"Sequence {i} labels: {sequence_labels}")
+            self.y[i] = np.argmax(
+                np.bincount(sequence_labels)
+            )  # argmax of bincount gives the most common label
+            # print(f"Sequence {i} label: {self.y[i]}")
 
         # Convert to tensors
         self.x = torch.tensor(self.x, dtype=torch.float32)
@@ -97,3 +112,9 @@ class TimeSeriesDataset(Dataset):
             self.delta[idx],
             self.y[idx],
         )
+
+    def get_label_encoder(self):
+        return self.label_encoder
+
+    def get_scaler(self):
+        return self.scaler

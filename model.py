@@ -2,6 +2,83 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from pytorch_lightning import Trainer, LightningModule
+from sklearn.metrics import f1_score
+
+
+class GRUD(LightningModule):
+    def __init__(self, input_size, hidden_size, output_size=6):
+        super(GRUD, self).__init__()
+        self.hidden_size = hidden_size
+        self.grud_cell = GRUDCell(input_size, hidden_size)
+        self.fc = nn.Linear(hidden_size, output_size)
+        self.loss_fn = nn.CrossEntropyLoss()
+
+    def forward(self, x, x_mean, mask, delta):
+        batch_size, seq_len, _ = x.size()
+        h = torch.zeros(batch_size, self.hidden_size).to(x.device)
+        for t in range(seq_len):
+            h = self.grud_cell(
+                x[:, t, :], h, x_mean[:, t, :], mask[:, t, :], delta[:, t, :]
+            )
+        out = self.fc(h)
+        # print(out.shape)
+        return out
+
+    def training_step(self, batch, batch_idx):
+        x, x_mean, mask, delta, y = batch
+        pred = self.forward(x, x_mean, mask, delta)
+        # y = torch.argmax(y, dim=1)
+        # pred = torch.argmax(pred, dim=1)
+        loss = self.loss_fn(pred, y)
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, x_mean, mask, delta, y = batch
+        pred = self.forward(x, x_mean, mask, delta)
+        # y = torch.argmax(y, dim=1)
+        loss = self.loss_fn(pred, y)
+
+        # Calculate accuracy
+        pred_classes = torch.argmax(pred, dim=1)
+        acc = (pred_classes == y).float().mean()
+
+        # Log loss and accuracy
+        self.log("val_loss", loss, prog_bar=True)
+        self.log("val_acc", acc, prog_bar=True)
+
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, x_mean, mask, delta, y = batch
+        pred = self(x, x_mean, mask, delta)
+        # y = torch.argmax(y, dim=1)  # convert one-hot to class indices
+
+        # Compute loss
+        loss = self.loss_fn(pred, y)
+
+        pred = torch.argmax(
+            pred, dim=1
+        )  # get the class with highest predicted probability
+
+        # Compute accuracy
+        correct_predictions = (pred == y).float()
+        acc = correct_predictions.sum() / len(correct_predictions)
+
+        # Compute F1-score
+        f1 = f1_score(y.detach().cpu(), pred.detach().cpu(), average="macro")
+
+        # Log the loss, accuracy, and F1-score
+        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_acc", acc, prog_bar=True)
+        self.log(
+            "test_f1", torch.tensor(f1), prog_bar=True
+        )  # f1_score returns a numpy float, need to convert to tensor
+
+        return loss
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=0.001)
 
 
 class GRUDCell(nn.Module):

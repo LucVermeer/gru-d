@@ -5,13 +5,12 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer, LightningModule
 from torch.utils.data import random_split
 from pytorch_lightning.callbacks import EarlyStopping
-from torchmetrics import Accuracy
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
-
+from pytorch_lightning.loggers import TensorBoardLogger
 import pandas as pd
 
-from .model import GRUDCell
+from .model import GRUD
 from .data import TimeSeriesDataset
 
 from datetime import datetime
@@ -29,106 +28,45 @@ class MaskedMSELoss(nn.Module):
         return masked_loss.sum() / mask.sum()
 
 
-class GRUD(LightningModule):
-    def __init__(self, input_size, hidden_size, output_size=6):
-        super(GRUD, self).__init__()
-        self.hidden_size = hidden_size
-        self.grud_cell = GRUDCell(input_size, hidden_size)
-        self.fc = nn.Linear(hidden_size, output_size)
-        self.loss_fn = nn.CrossEntropyLoss()
-
-    def forward(self, x, x_mean, mask, delta):
-        batch_size, seq_len, _ = x.size()
-        h = torch.zeros(batch_size, self.hidden_size).to(x.device)
-        for t in range(seq_len):
-            h = self.grud_cell(
-                x[:, t, :], h, x_mean[:, t, :], mask[:, t, :], delta[:, t, :]
-            )
-        out = self.fc(h)
-        # print(out.shape)
-        return out
-
-    def training_step(self, batch, batch_idx):
-        x, x_mean, mask, delta, y = batch
-        pred = self.forward(x, x_mean, mask, delta)
-        y = torch.argmax(y, dim=1)
-        # pred = torch.argmax(pred, dim=1)
-        loss = self.loss_fn(pred, y)
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        x, x_mean, mask, delta, y = batch
-        pred = self.forward(x, x_mean, mask, delta)
-        y = torch.argmax(y, dim=1)
-        loss = self.loss_fn(pred, y)
-
-        # Calculate accuracy
-        pred_classes = torch.argmax(pred, dim=1)
-        acc = (pred_classes == y).float().mean()
-
-        # Log loss and accuracy
-        self.log("val_loss", loss, prog_bar=True)
-        self.log("val_acc", acc, prog_bar=True)
-
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        x, x_mean, mask, delta, y = batch
-        pred = self(x, x_mean, mask, delta)
-        y = torch.argmax(y, dim=1)  # convert one-hot to class indices
-
-        # Compute loss
-        loss = self.loss_fn(pred, y)
-
-        pred = torch.argmax(
-            pred, dim=1
-        )  # get the class with highest predicted probability
-
-        # Compute accuracy
-        correct_predictions = (pred == y).float()
-        acc = correct_predictions.sum() / len(correct_predictions)
-
-        # Compute F1-score
-        f1 = f1_score(y.detach().cpu(), pred.detach().cpu(), average="macro")
-
-        # Log the loss, accuracy, and F1-score
-        self.log("test_loss", loss, prog_bar=True)
-        self.log("test_acc", acc, prog_bar=True)
-        self.log(
-            "test_f1", torch.tensor(f1), prog_bar=True
-        )  # f1_score returns a numpy float, need to convert to tensor
-
-        return loss
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.001)
-
-
 early_stop_callback = EarlyStopping(
-    monitor="val_acc",  # Metric to monitor
-    patience=3,  # Number of epochs with no improvement after which training will be stopped
-    verbose=True,  # Report when the training has been stopped
-    mode="min",  # 'min' indicates that training will be stopped when the quantity monitored has stopped decreasing
+    monitor="val_acc",
+    patience=3,
+    verbose=True,
+    mode="max",
 )
+
+
+def split_data(
+    df,
+    start_test="2023-06-14 07:36:33.297403",
+    end_test="2023-06-14 08:03:30.700492",
+):
+    """The timestamps are in column 'Time (s)"""
+    # Definne the test set as the rows in between the start_test and end_test timestamps
+    test_df = df[(df["Time (s)"] >= start_test) & (df["Time (s)"] <= end_test)]
+    # Define the train set as the rows before the start_test timestamp and after the end_test timestamp
+    train_df = df[(df["Time (s)"] < start_test) | (df["Time (s)"] > end_test)]
+    return train_df, test_df
 
 
 def train(args):
     # Instantiate the dataset
-    #   Load the csv fil
     df = pd.read_csv(args.data_path)
 
     # Split the dataframe into train, validation, and test
-    train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
-    train_df, val_df = train_test_split(
-        train_df, test_size=0.25, random_state=42
-    )  # 0.25 x 0.8 = 0.2
+    train_df, test_df = split_data(df)
+    # create the training dataset
+    train_dataset = TimeSeriesDataset(
+        train_df, seq_len=args.seq_len, step=args.step_size
+    )
 
-    # Create the datasets
-    train_dataset = TimeSeriesDataset(train_df, seq_len=args.seq_len)
-    val_dataset = TimeSeriesDataset(val_df, seq_len=args.seq_len)
+    # create the test dataset using the scaler from the training dataset
     test_dataset = TimeSeriesDataset(
-        test_df, seq_len=args.seq_len, step=args.step_size
+        test_df,
+        seq_len=args.seq_len,
+        step=args.step_size,
+        scaler=train_dataset.get_scaler(),
+        label_encoder=train_dataset.get_label_encoder(),
     )
 
     # Create the DataLoaders
@@ -136,11 +74,12 @@ def train(args):
         train_dataset, batch_size=args.batch_size, shuffle=True
     )
     val_dataloader = DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=False
+        test_dataset, batch_size=args.batch_size, shuffle=False
     )
     test_dataloader = DataLoader(
         test_dataset, batch_size=args.batch_size, shuffle=False
     )
+
     # Instantiate the model
     print("Instantiating the model...")
     model = GRUD(
@@ -150,9 +89,13 @@ def train(args):
     )
     print("Model instantiated.")
 
+    logger = TensorBoardLogger("lightning_logs", name="my_model")
+
     # Instantiate the trainer
     print("Instantiating the trainer...")
-    trainer = Trainer(max_epochs=50, callbacks=[early_stop_callback])
+    trainer = Trainer(
+        max_epochs=50, callbacks=[early_stop_callback], logger=logger
+    )
     print("Trainer instantiated.")
 
     # Train the model
