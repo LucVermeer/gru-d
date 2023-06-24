@@ -88,11 +88,9 @@ class TimeSeriesDataset(Dataset):
             self.delta[i] = delta[start_idx : start_idx + seq_len]
             # make the label the most common label in the sequence
             sequence_labels = y[start_idx : start_idx + seq_len]
-            # print(f"Sequence {i} labels: {sequence_labels}")
             self.y[i] = np.argmax(
                 np.bincount(sequence_labels)
             )  # argmax of bincount gives the most common label
-            # print(f"Sequence {i} label: {self.y[i]}")
 
         # Convert to tensors
         self.x = torch.tensor(self.x, dtype=torch.float32)
@@ -118,3 +116,6 @@ class TimeSeriesDataset(Dataset):
 
     def get_scaler(self):
         return self.scaler
+
+    def get_labels(self):
+        return self.y
