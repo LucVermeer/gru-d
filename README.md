@@ -15,8 +15,21 @@ This project aims to classify climber motions based on sensor data. The script p
 
 1. Clone the repository
 
+```bash
 git clone https://github.com/LucVermeer/grud
+```
 
+2. Navigate to the directory
+
+```bash
+cd gru-d 
+```
+
+3. Install the requirements
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Running the script
 
