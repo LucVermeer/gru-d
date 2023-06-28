@@ -239,7 +239,7 @@ def finetune(args):
         input_size=train_dataset.x.shape[2],
         hidden_size=train_dataset.x.shape[2],
         output_size=6,
-        learning_rate=0.0001,
+        # finetune=True,
     )
 
     # Load the pretrained weights
@@ -251,7 +251,7 @@ def finetune(args):
         k: v for k, v in pretrained_dict.items() if k in model_dict
     }
 
-    # Filter out the last fc layer
+    # Remove the last fc layer so we fully retrain it
     pretrained_dict = {
         k: v for k, v in pretrained_dict.items() if "fc" not in k
     }
@@ -264,12 +264,21 @@ def finetune(args):
 
     print("Model instantiated.")
 
-    logger = TensorBoardLogger("lightning_logs", name="my_model")
+    # Freeze the weights of the GRU layers
+    if args.freeze_gru:
+        print("Freezing the GRU layers...")
+        for name, param in model.named_parameters():
+            if "gru" in name:
+                param.requires_grad = False
+
+    logger = TensorBoardLogger(
+        "lightning_logs", name="finetuned_{}".format(args.model_name)
+    )
 
     # Instantiate the trainer
     print("Instantiating the trainer...")
     trainer = Trainer(
-        max_epochs=50, callbacks=[early_stop_callback], logger=logger
+        max_epochs=20, callbacks=[early_stop_callback], logger=logger
     )
     print("Trainer instantiated.")
 
@@ -337,6 +346,12 @@ if __name__ == "__main__":
         type=str,
         default="coarse_model_42",
         help="Name of the pretrained model",
+    )
+    parser.add_argument(
+        "--freeze_gru",
+        default=False,
+        action="store_true",
+        help="Whether to freeze the weights of the GRU layers",
     )
     args = parser.parse_args()
 

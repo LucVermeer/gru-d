@@ -103,15 +103,17 @@ class GRUD(LightningModule):
 
     def configure_optimizers(self):
         if self.finetune:
+            # Initialize a warm up phase for the first 20% of training steps
             optimizer = torch.optim.Adam(self.parameters(), lr=0.0001)
             steps_per_epoch = len(self.train_dataloader())
             num_training_steps = steps_per_epoch * self.trainer.max_epochs
             lr_scheduler = {
                 "scheduler": OneCycleLR(
                     optimizer,
-                    0.0001,
+                    0.001,
                     total_steps=num_training_steps,
                     anneal_strategy="linear",
+                    pct_start=0.2,
                 ),
                 "name": "learning_rate",
                 "interval": "step",
@@ -130,7 +132,6 @@ class APCModel(LightningModule):
             hidden_size, output_size
         )  # output_size is the same as input_size for APC
         self.loss_fn = MaskedMSELoss()
-        # self.loss_fn = nn.MSELoss()
 
     def forward(self, x, x_mean, mask, delta):
         batch_size, seq_len, _ = x.size()
@@ -150,8 +151,6 @@ class APCModel(LightningModule):
         pred = pred[:, -1, :]
         mask = mask[:, -1, :]
         loss = self.loss_fn(pred, y, mask)
-        # loss = self.loss_fn(pred, y)
-        # print(loss)
         self.log("train_loss", loss)
         return loss
 
