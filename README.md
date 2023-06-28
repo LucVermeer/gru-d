@@ -36,10 +36,11 @@ To run the script with the default parameters, use:
 
 ```bash
 python -m grud.train
-
+```
 Example:
 
+```bash
 python -m grud.train --mode=finetune --seed=0 --batch_size=64
-
+```
 Authors
 Luc Vermeer
