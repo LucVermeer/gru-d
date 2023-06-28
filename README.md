@@ -42,5 +42,11 @@ Example:
 ```bash
 python -m grud.train --mode=finetune --seed=0 --batch_size=64
 ```
+
+## Experiments
+
+Evaluation in experiments.ipynb
+experiments.ipynb primarily focuses on the evaluation of our model's performance.
+
 Authors
 Luc Vermeer
