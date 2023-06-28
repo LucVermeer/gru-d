@@ -16,7 +16,7 @@ This project aims to classify climber motions based on sensor data. The script p
 1. Clone the repository
 
 ```bash
-git clone https://github.com/LucVermeer/grud
+gh repo clone LucVermeer/gru-d
 ```
 
 2. Navigate to the directory
@@ -44,6 +44,11 @@ This script accepts a variety of command line arguments:
 - `--step_size`: Step size for training (default is `1`)
 - `--model_name`: Name of the pretrained model (default is `coarse_model_42`)
 - `--freeze_gru`: Whether to freeze the weights of the GRU layers (default is `False`)
+
+Run script from the parent directory:
+```bash
+cd ..
+```
 
 To run the script with the default parameters, use:
 
